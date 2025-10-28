@@ -391,13 +391,7 @@ include '../includes/header.php';
                 <div class="form-group">
                     <label for="source_type">Source Type</label>
                     <select id="source_type" name="source_type" class="form-control" required>
-                        <option value="opay">Opay</option>
-                        <option value="kuda">Kuda Bank</option>
-                        <option value="moniepoint">MoniePoint</option>
-                        <option value="gtbank_personal">GTBank Personal</option>
-                        <option value="gtbank_corporate">GTBank Corporate</option>
-                        <option value="access_corporate">Access Bank Corporate</option>
-                        <option value="palmpay">PalmPay</option>
+                        <option value="bank">Bank</option>
                         <option value="cash">Cash</option>
                     </select>
                 </div>

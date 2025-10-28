@@ -85,7 +85,7 @@ class Database {
             "CREATE TABLE IF NOT EXISTS bank_accounts (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(100) NOT NULL,
-                type ENUM('opay', 'kuda', 'moniepoint', 'gtbank_personal', 'gtbank_corporate', 'access_corporate', 'palmpay', 'cash') NOT NULL,
+                type ENUM('cash', 'bank') NOT NULL,
                 balance DECIMAL(15,2) DEFAULT 0,
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -387,6 +387,17 @@ class Database {
             }
         } catch (Exception $e) {
             $messages[] = ['type' => 'error', 'text' => 'Sources check failed: ' . $e->getMessage()];
+        }
+
+        // Migrate bank_accounts.type to only 'cash' or 'bank'
+        try {
+            // Convert legacy types to 'bank'
+            $this->conn->exec("UPDATE bank_accounts SET type='bank' WHERE type NOT IN ('cash','bank')");
+            // Ensure enum restriction
+            $this->conn->exec("ALTER TABLE bank_accounts MODIFY COLUMN type ENUM('cash','bank') NOT NULL");
+            $messages[] = ['type' => 'success', 'text' => "Aligned source types to 'cash'/'bank'."]; 
+        } catch (Exception $e) {
+            $messages[] = ['type' => 'error', 'text' => "Source type migration failed: " . $e->getMessage()];
         }
 
         return $messages;

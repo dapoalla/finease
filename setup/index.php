@@ -24,6 +24,25 @@ if ($_POST) {
                 $pdo = new PDO("mysql:host=$host;dbname=$dbname", $username, $password);
                 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
                 
+                // Detect existing application tables
+                $overwrite = isset($_POST['overwrite_existing']) ? 1 : 0;
+                $existingTables = [];
+                $appTables = [
+                    'users','company_settings','clients','bank_accounts','inventory','vat_records','invoices','transactions','tithes','job_order_line_items','generated_invoices'
+                ];
+                foreach ($appTables as $t) {
+                    $stmt = $pdo->prepare("SHOW TABLES LIKE ?");
+                    $stmt->execute([$t]);
+                    if ($stmt->rowCount() > 0) {
+                        $existingTables[] = $t;
+                    }
+                }
+
+                if (!empty($existingTables) && !$overwrite) {
+                    $error = "Existing data detected (" . implode(', ', $existingTables) . "). Check 'Overwrite existing data' to proceed.";
+                    break;
+                }
+
                 // Save database config
                 $config = "<?php\ndefine('DB_HOST', '$host');\ndefine('DB_NAME', '$dbname');\ndefine('DB_USER', '$username');\ndefine('DB_PASS', '$password');\n?>";
                 file_put_contents('../config/config.php', $config);
@@ -31,6 +50,14 @@ if ($_POST) {
                 // Create tables
                 require_once '../config/database.php';
                 $database = new Database();
+                if (!empty($existingTables) && $overwrite) {
+                    // Wipe existing app tables
+                    $pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
+                    foreach ($existingTables as $t) {
+                        try { $pdo->exec("DROP TABLE IF EXISTS `$t`"); } catch (Exception $e) { /* ignore */ }
+                    }
+                    $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
+                }
                 $database->createTables();
                 // Run migrations and environment checks
                 $checks = $database->runMigrationsAndChecks();
@@ -131,6 +158,13 @@ if ($_POST) {
                 <div class="form-group">
                     <label for="db_pass">Database Password</label>
                     <input type="password" id="db_pass" name="db_pass" class="form-control">
+                </div>
+
+                <div class="form-group" style="margin-top:0.5rem;">
+                    <label>
+                        <input type="checkbox" name="overwrite_existing" value="1"> Overwrite existing data if found
+                    </label>
+                    <small style="color:#c53030; display:block; margin-top:0.25rem;">Warning: This will delete existing Business Manager tables and data.</small>
                 </div>
                 
                 <button type="submit" class="btn btn-primary">Test Connection & Continue</button>
