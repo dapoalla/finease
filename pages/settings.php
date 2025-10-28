@@ -655,6 +655,13 @@ function hideDeleteUserModal() {
 }
 
 function createBackup() {
+    // Show loading indicator
+    const button = event.target;
+    const originalText = button.textContent;
+    button.textContent = 'Creating Backup...';
+    button.disabled = true;
+    
+    // Navigate to backup creation
     window.location.href = '../backup.php?action=create';
 }
 
@@ -665,30 +672,52 @@ function restoreBackup() {
         return;
     }
     
+    const file = fileInput.files[0];
+    
+    // Validate file type
+    if (!file.name.toLowerCase().endsWith('.sql')) {
+        alert('Please select a valid SQL backup file (.sql extension).');
+        return;
+    }
+    
+    // Validate file size (max 50MB)
+    if (file.size > 50 * 1024 * 1024) {
+        alert('Backup file is too large. Maximum size is 50MB.');
+        return;
+    }
+    
     if (confirm('Are you sure you want to restore from this backup? This will overwrite all current data and cannot be undone.')) {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '../backup.php?action=restore';
-        form.enctype = 'multipart/form-data';
+        const button = document.querySelector('button[onclick="restoreBackup()"]');
+        const originalText = button.textContent;
+        button.textContent = 'Restoring...';
+        button.disabled = true;
         
         const fileData = new FormData();
-        fileData.append('backup_file', fileInput.files[0]);
+        fileData.append('backup_file', file);
         
-        // Create a temporary form to submit the file
-        document.body.appendChild(form);
-        
-        // Use fetch to upload the file
+        // Use fetch to upload the file with proper headers for AJAX
         fetch('../backup.php?action=restore', {
             method: 'POST',
-            body: fileData
-        }).then(response => {
-            if (response.ok) {
-                alert('Backup restored successfully!');
+            body: fileData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            button.textContent = originalText;
+            button.disabled = false;
+            
+            if (data.success) {
+                alert('Backup restored successfully!\n' + data.message);
                 window.location.reload();
             } else {
-                alert('Restore failed. Please check the backup file.');
+                alert('Restore failed: ' + data.message);
             }
-        }).catch(error => {
+        })
+        .catch(error => {
+            button.textContent = originalText;
+            button.disabled = false;
             alert('Restore failed: ' + error.message);
         });
     }
