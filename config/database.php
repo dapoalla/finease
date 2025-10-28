@@ -61,6 +61,7 @@ class Database {
                 company_name VARCHAR(255) NOT NULL,
                 address TEXT,
                 contact_info TEXT,
+                logo_path VARCHAR(255) NULL,
                 country VARCHAR(100),
                 currency VARCHAR(10) DEFAULT '₦',
                 tax_enabled BOOLEAN DEFAULT FALSE,

@@ -24,7 +24,8 @@ try {
         'invoices.has_line_items' => "ALTER TABLE invoices ADD COLUMN has_line_items BOOLEAN DEFAULT FALSE",
         'invoices.line_items_total' => "ALTER TABLE invoices ADD COLUMN line_items_total DECIMAL(15,2) DEFAULT 0",
         'transactions.receipt_file' => "ALTER TABLE transactions ADD COLUMN receipt_file VARCHAR(255) NULL",
-        'transactions.seller_details' => "ALTER TABLE transactions ADD COLUMN seller_details VARCHAR(255) NULL"
+        'transactions.seller_details' => "ALTER TABLE transactions ADD COLUMN seller_details VARCHAR(255) NULL",
+        'company_settings.logo_path' => "ALTER TABLE company_settings ADD COLUMN logo_path VARCHAR(255) NULL"
     ];
     
     // Check and add missing columns
