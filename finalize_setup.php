@@ -25,6 +25,7 @@ try {
         'invoices.line_items_total' => "ALTER TABLE invoices ADD COLUMN line_items_total DECIMAL(15,2) DEFAULT 0",
         'transactions.receipt_file' => "ALTER TABLE transactions ADD COLUMN receipt_file VARCHAR(255) NULL",
         'transactions.seller_details' => "ALTER TABLE transactions ADD COLUMN seller_details VARCHAR(255) NULL",
+        'transactions.receipt_number' => "ALTER TABLE transactions ADD COLUMN receipt_number VARCHAR(100) NULL",
         'company_settings.logo_path' => "ALTER TABLE company_settings ADD COLUMN logo_path VARCHAR(255) NULL"
     ];
     

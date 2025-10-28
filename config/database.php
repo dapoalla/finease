@@ -256,26 +256,7 @@ class Database {
             $stmt->execute(['admin', password_hash('admin123', PASSWORD_DEFAULT)]);
         }
         
-        // Create default bank accounts if not exists
-        $stmt = $this->conn->prepare("SELECT COUNT(*) FROM bank_accounts");
-        $stmt->execute();
-        if ($stmt->fetchColumn() == 0) {
-            $defaultBanks = [
-                ['Opay', 'opay'],
-                ['Kuda Bank', 'kuda'],
-                ['MoniePoint', 'moniepoint'],
-                ['GTBank Personal', 'gtbank_personal'],
-                ['GTBank Corporate', 'gtbank_corporate'],
-                ['Access Bank Corporate', 'access_corporate'],
-                ['PalmPay', 'palmpay'],
-                ['Cash', 'cash']
-            ];
-            
-            $stmt = $this->conn->prepare("INSERT INTO bank_accounts (name, type) VALUES (?, ?)");
-            foreach ($defaultBanks as $bank) {
-                $stmt->execute($bank);
-            }
-        }
+        // Do not auto-create default bank accounts; start with a blank list
     }
 }
 ?>
