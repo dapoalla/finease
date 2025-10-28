@@ -11,8 +11,27 @@ require_once '../config/database.php';
 $error = '';
 $success = '';
 
+// Determine whether to show default credentials hint (only if admin still uses default password)
+$showDefaultHint = false;
+try {
+    $databaseForHint = new Database();
+    $dbForHint = $databaseForHint->getConnection();
+    $stmtHint = $dbForHint->prepare("SELECT id, password FROM users WHERE username = ? LIMIT 1");
+    $stmtHint->execute(['admin']);
+    $adminUser = $stmtHint->fetch(PDO::FETCH_ASSOC);
+    if ($adminUser && isset($adminUser['password']) && password_verify('admin123', $adminUser['password'])) {
+        $showDefaultHint = true;
+    }
+} catch (Exception $e) {
+    // If DB connection fails (e.g., before install), avoid showing hint
+    $showDefaultHint = false;
+}
+
 if (isset($_GET['setup'])) {
-    $success = 'Setup completed successfully! Please login with username: admin, password: admin123';
+    $success = 'Setup completed successfully!';
+    if ($showDefaultHint) {
+        $success .= ' Default login: admin / admin123';
+    }
 }
 
 if (isset($_GET['timeout'])) {
@@ -220,7 +239,9 @@ if ($_POST) {
         </form>
         
         <div class="login-footer">
-            Default login: admin / admin123
+            <?php if ($showDefaultHint): ?>
+                Default login: admin / admin123
+            <?php endif; ?>
         </div>
     </div>
 </body>
