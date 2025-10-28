@@ -125,6 +125,9 @@ $stmt = $db->prepare("SELECT id, invoice_id, client_name FROM invoices WHERE sta
 $stmt->execute();
 $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Bank accounts for edit modal options
+$bankAccounts = getBankAccounts();
+
 require_once '../includes/header.php';
 ?>
 

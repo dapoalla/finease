@@ -57,14 +57,14 @@ require_once '../includes/header.php';
 
 <div class="invoice-container">
     <div class="invoice-header">
-        <div class="company-info">
+        <div class="company-logo">
             <?php 
             $logoPath = $companySettings['logo_path'] ?? '';
             if ($logoPath && file_exists('../uploads/' . $logoPath)): ?>
-            <div class="company-logo">
-                <img src="../uploads/<?php echo $logoPath; ?>" alt="Company Logo" class="invoice-logo">
-            </div>
+            <img src="../uploads/<?php echo $logoPath; ?>" alt="Company Logo" class="invoice-logo">
             <?php endif; ?>
+        </div>
+        <div class="company-info">
             <h1><?php echo $companySettings['company_name'] ?? 'FinEase'; ?></h1>
             <?php if ($companySettings['address']): ?>
             <p><?php echo nl2br($companySettings['address']); ?></p>
@@ -167,11 +167,11 @@ require_once '../includes/header.php';
         <div class="payment-terms">
             <?php if ($documentType === 'invoice'): ?>
             <h3>Payment Terms</h3>
-            <p>Payment is due within 30 days of invoice date. Thank you for your business!</p>
+            <p>We look forward to you confirmed Order</p>
             <?php else: ?>
             <h3>Payment Received</h3>
             <p><strong>Status:</strong> PAID IN FULL</p>
-            <p>Thank you for your payment and business!</p>
+            <p>Than you for your patronage!</p>
             <?php endif; ?>
         </div>
     </div>
@@ -187,7 +187,7 @@ require_once '../includes/header.php';
 
 <style>
 @media print {
-    .navbar, .invoice-actions, .btn {
+    .navbar, .nav-user, .footer, .invoice-actions, .btn {
         display: none !important;
     }
     
@@ -204,22 +204,33 @@ require_once '../includes/header.php';
 }
 
 .invoice-container {
-    max-width: 800px;
+    max-width: 820px;
     margin: 0 auto;
     background: white;
     color: #333;
-    padding: 2rem;
+    padding: 1rem;
     border-radius: 8px;
     box-shadow: var(--shadow-lg);
 }
 
 .invoice-header {
+    position: relative;
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 2rem;
-    padding-bottom: 1rem;
-    border-bottom: 2px solid #eee;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #eee;
+}
+
+.company-logo {
+    position: absolute;
+    right: 0;
+    top: 0;
+}
+
+.invoice-logo {
+    max-height: 60px;
 }
 
 .company-info h1 {
@@ -238,13 +249,17 @@ require_once '../includes/header.php';
 
 .invoice-info h2 {
     color: var(--accent-primary);
-    font-size: 2rem;
-    margin-bottom: 1rem;
+    font-size: 1.75rem;
+    margin-bottom: 0.5rem;
 }
 
 .invoice-info p {
-    margin: 0.25rem 0;
+    margin: 0.15rem 0;
     color: #666;
+}
+
+.invoice-info p strong {
+    font-weight: 500;
 }
 
 .invoice-parties {
@@ -264,7 +279,7 @@ require_once '../includes/header.php';
 }
 
 .invoice-details {
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
 }
 
 .invoice-details h3 {
@@ -284,14 +299,14 @@ require_once '../includes/header.php';
 
 .invoice-table th,
 .invoice-table td {
-    padding: 0.75rem;
+    padding: 0.4rem 0.5rem;
     text-align: left;
     border-bottom: 1px solid #eee;
 }
 
 .invoice-table th {
     background: #f8f9fa;
-    font-weight: 600;
+    font-weight: 500;
     color: #333;
 }
 
@@ -301,7 +316,7 @@ require_once '../includes/header.php';
 }
 
 .invoice-totals {
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
     display: flex;
     justify-content: flex-end;
 }
@@ -313,20 +328,20 @@ require_once '../includes/header.php';
 .total-row {
     display: flex;
     justify-content: space-between;
-    padding: 0.5rem 0;
+    padding: 0.4rem 0;
     border-bottom: 1px solid #eee;
 }
 
 .grand-total {
     border-top: 2px solid #333;
     border-bottom: 2px solid #333;
-    font-size: 1.2rem;
-    margin-top: 0.5rem;
-    padding-top: 1rem;
+    font-size: 1.1rem;
+    margin-top: 0.25rem;
+    padding-top: 0.6rem;
 }
 
 .invoice-notes {
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
 }
 
 .invoice-notes h3 {
@@ -335,15 +350,15 @@ require_once '../includes/header.php';
 }
 
 .payment-terms {
-    margin-top: 1.5rem;
-    padding: 1rem;
+    margin-top: 1rem;
+    padding: 0.75rem;
     background: #f8f9fa;
     border-radius: 6px;
 }
 
 .invoice-actions {
     text-align: center;
-    padding-top: 2rem;
+    padding-top: 1rem;
     border-top: 1px solid #eee;
 }
 
