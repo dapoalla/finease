@@ -112,60 +112,111 @@ function restoreDatabaseBackup() {
         if (!isset($_FILES['backup_file']) || $_FILES['backup_file']['error'] !== UPLOAD_ERR_OK) {
             throw new Exception("No backup file uploaded or upload error occurred");
         }
-        
+
         $uploadedFile = $_FILES['backup_file'];
         $fileExtension = strtolower(pathinfo($uploadedFile['name'], PATHINFO_EXTENSION));
-        
-        if ($fileExtension !== 'sql') {
-            throw new Exception("Invalid file type. Only .sql files are supported");
+
+        $sqlContent = '';
+        if ($fileExtension === 'sql') {
+            $sqlContent = file_get_contents($uploadedFile['tmp_name']);
+            if ($sqlContent === false) {
+                throw new Exception("Failed to read SQL backup file");
+            }
+        } elseif ($fileExtension === 'zip') {
+            if (!class_exists('ZipArchive')) {
+                throw new Exception("ZIP restore is not supported on this server");
+            }
+            $zip = new ZipArchive();
+            if ($zip->open($uploadedFile['tmp_name']) !== true) {
+                throw new Exception("Failed to open ZIP backup file");
+            }
+            // Find first .sql file inside the zip
+            $sqlIndex = -1;
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $stat = $zip->statIndex($i);
+                if ($stat && isset($stat['name']) && strtolower(pathinfo($stat['name'], PATHINFO_EXTENSION)) === 'sql') {
+                    $sqlIndex = $i;
+                    break;
+                }
+            }
+            if ($sqlIndex === -1) {
+                $zip->close();
+                throw new Exception("No .sql file found inside the ZIP backup");
+            }
+            $sqlContent = $zip->getFromIndex($sqlIndex);
+            $zip->close();
+            if ($sqlContent === false) {
+                throw new Exception("Failed to read .sql from ZIP backup");
+            }
+        } else {
+            throw new Exception("Invalid file type. Only .sql or .zip files are supported");
         }
-        
-        // Read the SQL file
-        $sqlContent = file_get_contents($uploadedFile['tmp_name']);
-        if ($sqlContent === false) {
-            throw new Exception("Failed to read backup file");
+
+        // Normalize line endings and strip BOM
+        $sqlContent = preg_replace("/\r\n?|\n/", "\n", $sqlContent);
+        if (substr($sqlContent, 0, 3) === "\xEF\xBB\xBF") {
+            $sqlContent = substr($sqlContent, 3);
         }
-        
+
         $db = getDB();
         if (!$db) {
             throw new Exception("Database connection failed");
         }
-        
+
+        // Increase limits for large imports
+        @set_time_limit(300);
+        @ini_set('memory_limit', '512M');
+
         // Disable foreign key checks during restore
         $db->exec("SET FOREIGN_KEY_CHECKS = 0");
-        
-        // Split SQL content into individual statements
-        $statements = explode(';', $sqlContent);
-        
+
+        // Split SQL content into individual statements robustly
+        $statements = splitSqlStatements($sqlContent);
+
         $successCount = 0;
         $errorCount = 0;
-        
+        $errors = [];
+
         foreach ($statements as $statement) {
-            $statement = trim($statement);
-            
-            // Skip empty statements and comments
-            if (empty($statement) || strpos($statement, '--') === 0) {
-                continue;
-            }
-            
+            $trimmed = trim($statement);
+            if ($trimmed === '') { continue; }
+            // Skip comment-only statements
+            if (preg_match('/^(--|#|\/\*!|\/\*)/', $trimmed)) { continue; }
             try {
                 $db->exec($statement);
                 $successCount++;
             } catch (PDOException $e) {
                 $errorCount++;
-                error_log("SQL Error during restore: " . $e->getMessage() . " - Statement: " . $statement);
+                $msg = $e->getMessage();
+                $snippet = substr($trimmed, 0, 200);
+                $errors[] = "Error: $msg | Statement: $snippet";
+                error_log("SQL Error during restore: $msg - Statement: $trimmed");
             }
         }
-        
+
         // Re-enable foreign key checks
         $db->exec("SET FOREIGN_KEY_CHECKS = 1");
-        
-        if ($errorCount > 0) {
-            $_SESSION['backup_error'] = "Restore completed with {$errorCount} errors. {$successCount} statements executed successfully.";
-        } else {
-            $_SESSION['backup_success'] = "Backup restored successfully! {$successCount} statements executed.";
+
+        // Run migrations and checks after restore to align schema
+        try {
+            $database = new Database();
+            $results = $database->runMigrationsAndChecks();
+            // Append migration messages to success report
+            $migrationNotes = array_map(function($m) { return ($m['type'] ?? 'info') . ': ' . ($m['text'] ?? ''); }, $results);
+        } catch (Exception $e) {
+            $migrationNotes = ["error: Post-restore migrations failed: " . $e->getMessage()];
         }
-        
+
+        if ($errorCount > 0) {
+            $summary = "Restore completed with {$errorCount} errors. {$successCount} statements executed successfully.";
+            $details = "\n" . implode("\n", array_slice($errors, 0, 5));
+            $migrations = "\nPost-restore checks:\n" . implode("\n", $migrationNotes);
+            $_SESSION['backup_error'] = $summary . $details . $migrations;
+        } else {
+            $migrations = "\nPost-restore checks:\n" . implode("\n", $migrationNotes);
+            $_SESSION['backup_success'] = "Backup restored successfully! {$successCount} statements executed." . $migrations;
+        }
+
     } catch (Exception $e) {
         $_SESSION['backup_error'] = 'Restore failed: ' . $e->getMessage();
     }
@@ -185,5 +236,73 @@ function restoreDatabaseBackup() {
     
     header('Location: pages/settings.php');
     exit;
+}
+
+// Split SQL into statements respecting quotes and comments
+function splitSqlStatements($sql) {
+    $statements = [];
+    $buffer = '';
+    $inSingle = false;
+    $inDouble = false;
+    $inLineComment = false; // -- or #
+    $inBlockComment = false; // /* */
+    $len = strlen($sql);
+    for ($i = 0; $i < $len; $i++) {
+        $ch = $sql[$i];
+        $next = $i + 1 < $len ? $sql[$i+1] : '';
+
+        // Handle start of comments when not in quotes/comments
+        if (!$inSingle && !$inDouble && !$inBlockComment) {
+            // -- comment
+            if (!$inLineComment && $ch === '-' && $next === '-' ) {
+                $inLineComment = true;
+            }
+            // # comment
+            if (!$inLineComment && $ch === '#') {
+                $inLineComment = true;
+            }
+            // /* block comment */
+            if (!$inLineComment && $ch === '/' && $next === '*') {
+                $inBlockComment = true;
+                $i++; // consume *
+                continue;
+            }
+        }
+
+        // If in line comment, skip until newline
+        if ($inLineComment) {
+            if ($ch === "\n") { $inLineComment = false; }
+            continue;
+        }
+
+        // If in block comment, look for */
+        if ($inBlockComment) {
+            if ($ch === '*' && $next === '/') {
+                $inBlockComment = false;
+                $i++; // consume /
+            }
+            continue;
+        }
+
+        // Toggle quotes
+        if ($ch === "'" && !$inDouble) {
+            // handle escaped single quotes
+            $escaped = $i > 0 && $sql[$i-1] === '\\';
+            if (!$escaped) { $inSingle = !$inSingle; }
+        } elseif ($ch === '"' && !$inSingle) {
+            $escaped = $i > 0 && $sql[$i-1] === '\\';
+            if (!$escaped) { $inDouble = !$inDouble; }
+        }
+
+        // Statement terminator
+        if ($ch === ';' && !$inSingle && !$inDouble) {
+            $statements[] = $buffer;
+            $buffer = '';
+        } else {
+            $buffer .= $ch;
+        }
+    }
+    if (trim($buffer) !== '') { $statements[] = $buffer; }
+    return $statements;
 }
 ?>
