@@ -126,23 +126,13 @@ try {
         echo "✓ Admin user exists\n";
     }
     
-    // Verify bank accounts exist
+    // Verify bank accounts exist (do NOT auto-create defaults)
     $stmt = $db->prepare("SELECT COUNT(*) FROM bank_accounts");
     $stmt->execute();
     
     if ($stmt->fetchColumn() == 0) {
-        $defaultBanks = [
-            ['Cash', 'cash'],
-            ['Opay', 'opay'],
-            ['Kuda Bank', 'kuda'],
-            ['GTBank', 'gtbank_personal']
-        ];
-        
-        $stmt = $db->prepare("INSERT INTO bank_accounts (name, type, is_active) VALUES (?, ?, 1)");
-        foreach ($defaultBanks as $bank) {
-            $stmt->execute($bank);
-        }
-        echo "✓ Created default sources\n";
+        echo "• No sources found yet (this is expected).\n";
+        echo "  Add sources/banks in Settings when ready.\n";
     } else {
         echo "✓ Sources exist\n";
     }
