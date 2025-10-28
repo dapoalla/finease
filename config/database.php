@@ -258,5 +258,138 @@ class Database {
         
         // Do not auto-create default bank accounts; start with a blank list
     }
+
+    // Run migrations and environment checks; returns a list of messages
+    public function runMigrationsAndChecks() {
+        if (!$this->conn) {
+            $this->conn = $this->getConnection();
+        }
+        $messages = [];
+        if (!$this->conn) {
+            $messages[] = ['type' => 'error', 'text' => 'Database connection failed; cannot run migrations.'];
+            return $messages;
+        }
+
+        // Required columns
+        $requiredColumns = [
+            'invoices.has_line_items' => "ALTER TABLE invoices ADD COLUMN has_line_items BOOLEAN DEFAULT FALSE",
+            'invoices.line_items_total' => "ALTER TABLE invoices ADD COLUMN line_items_total DECIMAL(15,2) DEFAULT 0",
+            'transactions.receipt_file' => "ALTER TABLE transactions ADD COLUMN receipt_file VARCHAR(255) NULL",
+            'transactions.seller_details' => "ALTER TABLE transactions ADD COLUMN seller_details VARCHAR(255) NULL",
+            'transactions.receipt_number' => "ALTER TABLE transactions ADD COLUMN receipt_number VARCHAR(100) NULL",
+            'company_settings.logo_path' => "ALTER TABLE company_settings ADD COLUMN logo_path VARCHAR(255) NULL"
+        ];
+
+        foreach ($requiredColumns as $column => $sql) {
+            list($table, $columnName) = explode('.', $column);
+            try {
+                $stmt = $this->conn->prepare("SHOW COLUMNS FROM $table LIKE ?");
+                $stmt->execute([$columnName]);
+                if ($stmt->rowCount() == 0) {
+                    $this->conn->exec($sql);
+                    $messages[] = ['type' => 'success', 'text' => "Added column: $column"]; 
+                } else {
+                    $messages[] = ['type' => 'success', 'text' => "Column exists: $column"]; 
+                }
+            } catch (Exception $e) {
+                $messages[] = ['type' => 'error', 'text' => "Failed to ensure $column: " . $e->getMessage()];
+            }
+        }
+
+        // Required tables
+        $requiredTables = [
+            'job_order_line_items' => "CREATE TABLE IF NOT EXISTS job_order_line_items (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                job_order_id INT NOT NULL,
+                description VARCHAR(255) NOT NULL,
+                unit_price DECIMAL(15,2) NOT NULL,
+                quantity DECIMAL(10,2) NOT NULL DEFAULT 1,
+                total DECIMAL(15,2) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (job_order_id) REFERENCES invoices(id) ON DELETE CASCADE
+            )",
+            'generated_invoices' => "CREATE TABLE IF NOT EXISTS generated_invoices (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                invoice_number VARCHAR(50) NOT NULL UNIQUE,
+                job_order_id INT NOT NULL,
+                client_id INT,
+                client_name VARCHAR(255) NOT NULL,
+                amount DECIMAL(15,2) NOT NULL,
+                vat_amount DECIMAL(15,2) DEFAULT 0,
+                total_amount DECIMAL(15,2) NOT NULL,
+                document_type ENUM('invoice', 'receipt') DEFAULT 'invoice',
+                status ENUM('sent', 'paid', 'overdue') DEFAULT 'sent',
+                due_date DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (job_order_id) REFERENCES invoices(id) ON DELETE CASCADE
+            )"
+        ];
+
+        foreach ($requiredTables as $tableName => $sql) {
+            try {
+                $this->conn->exec($sql);
+                $messages[] = ['type' => 'success', 'text' => "Table ready: $tableName"]; 
+            } catch (Exception $e) {
+                $messages[] = ['type' => 'error', 'text' => "Failed to create table $tableName: " . $e->getMessage()];
+            }
+        }
+
+        // Directories and write-permission checks
+        $directories = [
+            __DIR__ . '/../uploads',
+            __DIR__ . '/../uploads/receipts'
+        ];
+        foreach ($directories as $dir) {
+            try {
+                if (!file_exists($dir)) {
+                    mkdir($dir, 0755, true);
+                    @file_put_contents($dir . '/.gitkeep', '');
+                    $messages[] = ['type' => 'success', 'text' => "Created directory: " . basename($dir)];
+                } else {
+                    $messages[] = ['type' => 'success', 'text' => "Directory exists: " . basename($dir)];
+                }
+                // Permission test
+                $testFile = $dir . '/perm_test.txt';
+                if (@file_put_contents($testFile, 'ok') !== false) {
+                    @unlink($testFile);
+                    $messages[] = ['type' => 'success', 'text' => basename($dir) . ' is writable'];
+                } else {
+                    $messages[] = ['type' => 'error', 'text' => basename($dir) . ' is not writable; adjust permissions'];
+                }
+            } catch (Exception $e) {
+                $messages[] = ['type' => 'error', 'text' => "Failed to initialize directory " . basename($dir) . ": " . $e->getMessage()];
+            }
+        }
+
+        // Admin user check
+        try {
+            $stmt = $this->conn->prepare("SELECT COUNT(*) FROM users WHERE role = 'admin'");
+            $stmt->execute();
+            if ($stmt->fetchColumn() == 0) {
+                $stmt = $this->conn->prepare("INSERT INTO users (username, password, role) VALUES (?, ?, 'admin')");
+                $stmt->execute(['admin', password_hash('admin123', PASSWORD_DEFAULT)]);
+                $messages[] = ['type' => 'success', 'text' => 'Created default admin user (admin/admin123)'];
+            } else {
+                $messages[] = ['type' => 'success', 'text' => 'Admin user exists'];
+            }
+        } catch (Exception $e) {
+            $messages[] = ['type' => 'error', 'text' => 'Admin user check failed: ' . $e->getMessage()];
+        }
+
+        // Sources check: do not auto-seed
+        try {
+            $stmt = $this->conn->prepare("SELECT COUNT(*) FROM bank_accounts");
+            $stmt->execute();
+            if ($stmt->fetchColumn() == 0) {
+                $messages[] = ['type' => 'info', 'text' => 'No sources found — add banks/payment sources in Settings'];
+            } else {
+                $messages[] = ['type' => 'success', 'text' => 'Sources exist'];
+            }
+        } catch (Exception $e) {
+            $messages[] = ['type' => 'error', 'text' => 'Sources check failed: ' . $e->getMessage()];
+        }
+
+        return $messages;
+    }
 }
 ?>

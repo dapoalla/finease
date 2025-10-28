@@ -9,6 +9,7 @@ if (file_exists('../config/setup_complete.txt')) {
 $step = $_GET['step'] ?? 1;
 $error = '';
 $success = '';
+$checks = [];
 
 if ($_POST) {
     switch ($step) {
@@ -31,6 +32,8 @@ if ($_POST) {
                 require_once '../config/database.php';
                 $database = new Database();
                 $database->createTables();
+                // Run migrations and environment checks
+                $checks = $database->runMigrationsAndChecks();
                 
                 header('Location: ?step=2');
                 exit;
@@ -54,8 +57,11 @@ if ($_POST) {
             $taxRate = $_POST['tax_rate'] ?? 7.50;
             $titheRate = $_POST['tithe_rate'] ?? 10.00;
             
-            $stmt = $db->prepare("INSERT INTO company_settings (company_name, address, contact_info, country, currency, tax_enabled, tax_rate, tithe_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt = $db->prepare("INSERT INTO company_settings (company_name, address, contact_info, country, currency, tax_enabled, tax_rate, tithe_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ");
             $stmt->execute([$companyName, $address, $contactInfo, $country, $currency, $taxEnabled, $taxRate, $titheRate]);
+            
+            // Run migrations and environment checks again to finalize
+            $checks = $database->runMigrationsAndChecks();
             
             // Mark setup as complete
             file_put_contents('../config/setup_complete.txt', date('Y-m-d H:i:s'));
@@ -85,6 +91,22 @@ if ($_POST) {
         
         <?php if ($error): ?>
             <div class="alert alert-error"><?php echo $error; ?></div>
+        <?php endif; ?>
+        
+        <?php if (!empty($checks) && $step == 2): ?>
+        <div class="form-container">
+            <h2>System Checks & Migrations</h2>
+            <ul style="margin: 0; padding-left: 1.2rem;">
+                <?php foreach ($checks as $item): ?>
+                    <li style="color: <?php echo $item['type'] === 'error' ? '#c53030' : ($item['type'] === 'info' ? '#2b6cb0' : '#2f855a'); ?>;">
+                        <?php echo htmlspecialchars($item['text']); ?>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+            <?php if (array_filter($checks, fn($c) => $c['type'] === 'error')): ?>
+                <p style="color:#c53030; margin-top: 1rem;">Please resolve the errors above (e.g., directory permissions) and re-run setup.</p>
+            <?php endif; ?>
+        </div>
         <?php endif; ?>
         
         <?php if ($step == 1): ?>

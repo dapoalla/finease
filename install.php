@@ -34,6 +34,8 @@ if ($_POST && $step == 1) {
         require_once 'config/database.php';
         $database = new Database();
         $database->createTables();
+        // Run migrations and environment checks
+        $checks = $database->runMigrationsAndChecks();
         
         $success = "Database setup completed successfully!";
         $step = 2;
@@ -236,7 +238,20 @@ if ($_POST && $step == 1) {
                 ⚠️ Please change the default password after your first login for security.
             </p>
             
-            <a href="setup/index.php" class="btn btn-primary">Continue to Company Setup</a>
+            <div style="text-align:left; margin-top:1rem;">
+                <h3>System Checks & Migrations</h3>
+                <?php if (!empty($checks)): ?>
+                <ul style="margin: 0; padding-left: 1.2rem;">
+                    <?php foreach ($checks as $item): ?>
+                        <li style="color: <?php echo $item['type'] === 'error' ? '#c53030' : ($item['type'] === 'info' ? '#2b6cb0' : '#2f855a'); ?>;">
+                            <?php echo htmlspecialchars($item['text']); ?>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php endif; ?>
+            </div>
+
+            <a href="setup/index.php" class="btn btn-primary" style="margin-top: 1rem;">Continue to Company Setup</a>
         </div>
         <?php endif; ?>
     </div>
