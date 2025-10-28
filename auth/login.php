@@ -16,14 +16,19 @@ $showDefaultHint = false;
 try {
     $databaseForHint = new Database();
     $dbForHint = $databaseForHint->getConnection();
-    $stmtHint = $dbForHint->prepare("SELECT id, password FROM users WHERE username = ? LIMIT 1");
-    $stmtHint->execute(['admin']);
-    $adminUser = $stmtHint->fetch(PDO::FETCH_ASSOC);
-    if ($adminUser && isset($adminUser['password']) && password_verify('admin123', $adminUser['password'])) {
-        $showDefaultHint = true;
+    if ($dbForHint) {
+        $stmtHint = $dbForHint->prepare("SELECT id, password FROM users WHERE username = ? LIMIT 1");
+        $stmtHint->execute(['admin']);
+        $adminUser = $stmtHint->fetch(PDO::FETCH_ASSOC);
+        if ($adminUser && isset($adminUser['password']) && password_verify('admin123', $adminUser['password'])) {
+            $showDefaultHint = true;
+        }
+    } else {
+        // If DB connection fails (e.g., before install), avoid showing hint
+        $showDefaultHint = false;
     }
-} catch (Exception $e) {
-    // If DB connection fails (e.g., before install), avoid showing hint
+} catch (Throwable $e) {
+    // Avoid fatal on type errors; do not show hint when DB is unavailable
     $showDefaultHint = false;
 }
 
@@ -45,21 +50,24 @@ if ($_POST) {
     if ($username && $password) {
         $database = new Database();
         $db = $database->getConnection();
-        
-        $stmt = $db->prepare("SELECT id, username, password, role FROM users WHERE username = ?");
-        $stmt->execute([$username]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($user && password_verify($password, $user['password'])) {
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['username'] = $user['username'];
-            $_SESSION['user_role'] = $user['role'];
-            $_SESSION['last_activity'] = time();
-            
-            header('Location: ../index.php');
-            exit;
+        if (!$db) {
+            $error = 'Database connection error. Please verify configuration (config/config.php) or rerun installation.';
         } else {
-            $error = 'Invalid username or password';
+            $stmt = $db->prepare("SELECT id, username, password, role FROM users WHERE username = ?");
+            $stmt->execute([$username]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($user && password_verify($password, $user['password'])) {
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['username'] = $user['username'];
+                $_SESSION['user_role'] = $user['role'];
+                $_SESSION['last_activity'] = time();
+                
+                header('Location: ../index.php');
+                exit;
+            } else {
+                $error = 'Invalid username or password';
+            }
         }
     } else {
         $error = 'Please fill in all fields';

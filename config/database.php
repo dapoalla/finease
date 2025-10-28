@@ -30,7 +30,9 @@ class Database {
                                 $this->username, $this->password);
             $this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         } catch(PDOException $exception) {
-            echo "Connection error: " . $exception->getMessage();
+            // Do not echo here to avoid breaking headers/UI; log instead
+            error_log("Connection error: " . $exception->getMessage());
+            $this->conn = null;
         }
         
         return $this->conn;
