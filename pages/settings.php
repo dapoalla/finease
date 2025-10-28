@@ -124,7 +124,8 @@ if ($_POST) {
                 if (move_uploaded_file($_FILES['company_logo']['tmp_name'], $uploadPath)) {
                     // Update company settings with logo path
                     $db = getDB();
-                    $stmt = $db->prepare("UPDATE company_settings SET logo_path = ? WHERE id = (SELECT MIN(id) FROM company_settings)");
+                    // Update the first settings row without using a subquery on the same table
+                    $stmt = $db->prepare("UPDATE company_settings SET logo_path = ? ORDER BY id ASC LIMIT 1");
                     $stmt->execute([$fileName]);
                     
                     $success = "Company logo uploaded successfully!";
