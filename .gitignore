@@ -1,0 +1,6 @@
+# Ignore environment-specific and generated files
+config/config.php
+config/setup_complete.txt
+uploads/receipts/*
+uploads/*
+*.sql
