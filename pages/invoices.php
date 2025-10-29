@@ -18,19 +18,72 @@ if ($_POST && checkUserPermission('accountant')) {
         $invoiceDbId = intval($_POST['invoice_db_id'] ?? 0);
         $clientName = sanitizeInput($_POST['client_name'] ?? '');
         $serviceDescription = sanitizeInput($_POST['service_description'] ?? '');
-        $amount = floatval($_POST['amount'] ?? 0);
         $date = $_POST['date'] ?? date('Y-m-d');
         $notes = sanitizeInput($_POST['notes'] ?? '');
+        $useLineItems = isset($_POST['use_line_items']);
 
         if (!$invoiceDbId) {
             $error = "Invalid job order ID.";
         } else {
-            $db = getDB();
-            $stmt = $db->prepare("UPDATE invoices SET client_name = ?, service_description = ?, amount = ?, date = ?, notes = ? WHERE id = ?");
-            if ($stmt->execute([$clientName, $serviceDescription, $amount, $date, $notes, $invoiceDbId])) {
-                $success = "Job Order updated successfully!";
-            } else {
-                $error = "Failed to update job order.";
+            try {
+                $db = getDB();
+                $db->beginTransaction();
+                
+                // Calculate amounts from line items
+                $amount = 0;
+                $vatAmount = 0;
+                $totalWithVat = 0;
+                
+                if ($useLineItems && isset($_POST['line_items']) && !empty($_POST['line_items'])) {
+                    foreach ($_POST['line_items'] as $item) {
+                        if (!empty($item['description']) && !empty($item['unit_price']) && !empty($item['quantity'])) {
+                            $amount += floatval($item['unit_price']) * floatval($item['quantity']);
+                        }
+                    }
+                    
+                    // Calculate VAT
+                    $stmt = $db->prepare("SELECT tax_rate FROM company_settings LIMIT 1");
+                    $stmt->execute();
+                    $settings = $stmt->fetch(PDO::FETCH_ASSOC);
+                    $taxRate = floatval($settings['tax_rate'] ?? 7.5);
+                    $vatAmount = $amount * ($taxRate / 100);
+                    $totalWithVat = $amount + $vatAmount;
+                }
+                
+                // Update job order
+                $stmt = $db->prepare("UPDATE invoices SET client_name = ?, service_description = ?, amount = ?, vat_amount = ?, total_with_vat = ?, has_line_items = ?, line_items_total = ?, date = ?, notes = ? WHERE id = ?");
+                if (!$stmt->execute([$clientName, $serviceDescription, $amount, $vatAmount, $totalWithVat, $useLineItems ? 1 : 0, $useLineItems ? $amount : 0, $date, $notes, $invoiceDbId])) {
+                    throw new Exception("Failed to update job order");
+                }
+                
+                // Delete existing line items
+                $stmt = $db->prepare("DELETE FROM job_order_line_items WHERE job_order_id = ?");
+                $stmt->execute([$invoiceDbId]);
+                
+                // Add new line items if used
+                if ($useLineItems && isset($_POST['line_items']) && !empty($_POST['line_items'])) {
+                    $lineItemStmt = $db->prepare("INSERT INTO job_order_line_items (job_order_id, description, unit_price, quantity, total) VALUES (?, ?, ?, ?, ?)");
+                    
+                    foreach ($_POST['line_items'] as $item) {
+                        if (!empty($item['description']) && !empty($item['unit_price']) && !empty($item['quantity'])) {
+                            $description = sanitizeInput($item['description']);
+                            $unitPrice = floatval($item['unit_price']);
+                            $quantity = floatval($item['quantity']);
+                            $total = $unitPrice * $quantity;
+                            
+                            if (!$lineItemStmt->execute([$invoiceDbId, $description, $unitPrice, $quantity, $total])) {
+                                throw new Exception("Failed to update line item");
+                            }
+                        }
+                    }
+                }
+                
+                $db->commit();
+                $success = "Job Order updated successfully!" . ($vatAmount > 0 ? " (VAT: " . formatCurrency($vatAmount) . ")" : "");
+                
+            } catch (Exception $e) {
+                $db->rollback();
+                $error = "Failed to update job order: " . $e->getMessage();
             }
         }
     }
@@ -210,18 +263,28 @@ require_once '../includes/header.php';
         
         <div class="form-group">
             <label>
-                <input type="checkbox" id="use_line_items" name="use_line_items" onchange="toggleLineItems()">
-                Use Line Items (itemized billing)
+                <input type="checkbox" id="use_line_items" name="use_line_items" onchange="toggleLineItems()" required checked>
+                Use Line Items (itemized billing) <span class="required-asterisk">*</span>
             </label>
+            <small class="required-text">Line items are mandatory for all job orders</small>
         </div>
         
-        <div id="simple_amount" class="form-group">
+        <div id="simple_amount" class="form-group" style="display: none;">
             <label for="amount">Amount</label>
-            <input type="number" id="amount" name="amount" class="form-control" step="0.01" min="0" required>
+            <input type="number" id="amount" name="amount" class="form-control" step="0.01" min="0">
         </div>
         
-        <div id="line_items_section" class="form-group" style="display: none;">
+        <div id="line_items_section" class="form-group">
             <label>Line Items</label>
+            <div class="line-item-header">
+                <div class="line-item-grid">
+                    <div>Description</div>
+                    <div>Unit Price</div>
+                    <div>Quantity</div>
+                    <div>Total</div>
+                    <div>Action</div>
+                </div>
+            </div>
             <div id="line_items_container">
                 <div class="line-item-row" data-row="0">
                     <div class="line-item-grid">
@@ -383,7 +446,7 @@ require_once '../includes/header.php';
 
 <!-- Edit Job Order Modal -->
 <div id="editModal" class="modal" style="display: none;">
-    <div class="modal-content">
+    <div class="modal-content edit-modal-content">
         <h3>Edit Job Order</h3>
         <form method="POST">
             <input type="hidden" id="edit_invoice_id" name="invoice_db_id">
@@ -396,9 +459,38 @@ require_once '../includes/header.php';
                 <textarea id="edit_service_description" name="service_description" class="form-control" rows="3" required></textarea>
             </div>
             <div class="form-group">
-                <label for="edit_amount">Amount</label>
-                <input type="number" id="edit_amount" name="amount" class="form-control" step="0.01" min="0" required>
+                <label>
+                    <input type="checkbox" id="edit_use_line_items" name="use_line_items" onchange="toggleEditLineItems()" checked>
+                    Use Line Items (itemized billing) <span class="required-asterisk">*</span>
+                </label>
+                <small class="required-text">Line items are mandatory for all job orders</small>
             </div>
+            
+            <div id="edit_simple_amount" class="form-group" style="display: none;">
+                <label for="edit_amount">Amount</label>
+                <input type="number" id="edit_amount" name="amount" class="form-control" step="0.01" min="0">
+            </div>
+            
+            <div id="edit_line_items_section" class="form-group">
+                <label>Line Items</label>
+                <div class="line-item-header">
+                    <div class="line-item-grid">
+                        <div>Description</div>
+                        <div>Unit Price</div>
+                        <div>Quantity</div>
+                        <div>Total</div>
+                        <div>Action</div>
+                    </div>
+                </div>
+                <div id="edit_line_items_container">
+                    <!-- Line items will be populated by JavaScript -->
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addEditLineItem()">+ Add Line Item</button>
+                <div class="line-items-summary">
+                    <strong>Total: <span id="edit_line_items_grand_total">₦0.00</span></strong>
+                </div>
+            </div>
+            
             <div class="form-group">
                 <label for="edit_date">Date</label>
                 <input type="date" id="edit_date" name="date" class="form-control" required>
@@ -449,6 +541,12 @@ require_once '../includes/header.php';
     max-width: 400px;
 }
 
+/* Widen the Edit Job Order modal for better readability */
+.edit-modal-content {
+    max-width: 820px;
+    width: 95%;
+}
+
 /* Line Items Styling */
 .line-item-grid {
     display: grid;
@@ -456,6 +554,19 @@ require_once '../includes/header.php';
     gap: 0.5rem;
     align-items: center;
     margin-bottom: 0.5rem;
+}
+
+.line-item-header {
+    margin-bottom: 0.25rem;
+}
+
+.line-item-header .line-item-grid {
+    font-weight: 600;
+    color: #555;
+}
+
+.line-item-header .line-item-grid div {
+    padding: 0.25rem 0;
 }
 
 .line-item-row {
@@ -485,6 +596,21 @@ require_once '../includes/header.php';
         width: 100%;
     }
 }
+
+/* Required field styling */
+.required-asterisk {
+    color: #dc3545;
+    font-weight: bold;
+    margin-left: 2px;
+}
+
+.required-text {
+    color: #dc3545;
+    font-size: 0.875rem;
+    display: block;
+    margin-top: 0.25rem;
+    font-style: italic;
+}
 </style>
 
 <script>
@@ -498,9 +624,43 @@ function editJobOrder(invoiceId) {
                 document.getElementById('edit_invoice_id').value = inv.id;
                 document.getElementById('edit_client_name').value = inv.client_name || '';
                 document.getElementById('edit_service_description').value = inv.service_description || '';
-                document.getElementById('edit_amount').value = inv.total_with_vat || inv.amount || 0;
                 document.getElementById('edit_date').value = inv.date ? inv.date.substring(0,10) : '';
                 document.getElementById('edit_notes').value = inv.notes || '';
+                
+                // Enforce line items usage in edit modal
+                const editUseLineItems = document.getElementById('edit_use_line_items');
+                const editSimpleAmount = document.getElementById('edit_simple_amount');
+                const editLineItemsSection = document.getElementById('edit_line_items_section');
+                const editAmountInput = document.getElementById('edit_amount');
+                
+                // Always enable and show line items
+                if (editUseLineItems) editUseLineItems.checked = true;
+                if (editSimpleAmount) editSimpleAmount.style.display = 'none';
+                if (editLineItemsSection) editLineItemsSection.style.display = 'block';
+                if (editAmountInput) editAmountInput.required = false;
+                
+                // Populate existing line items (or create one blank row)
+                const container = document.getElementById('edit_line_items_container');
+                container.innerHTML = '';
+                let editCounter = 0;
+                if (data.line_items && Array.isArray(data.line_items) && data.line_items.length > 0) {
+                    data.line_items.forEach(item => {
+                        addEditLineItem({
+                            description: item.description,
+                            unit_price: parseFloat(item.unit_price) || 0,
+                            quantity: parseFloat(item.quantity) || 1
+                        }, editCounter);
+                        editCounter++;
+                    });
+                } else {
+                    addEditLineItem({}, editCounter);
+                }
+                // Update the global counter for subsequent additions
+                editLineItemCounter = editCounter;
+                
+                // Recalculate totals after population
+                calculateEditGrandTotal();
+                
                 document.getElementById('editModal').style.display = 'block';
             } else {
                 alert('Failed to load job order: ' + data.message);
@@ -550,6 +710,89 @@ function hideStatusModal() {
     document.getElementById('statusModal').style.display = 'none';
 }
 
+// ----- Edit Modal Line Items Helpers -----
+let editLineItemCounter = 0;
+
+function toggleEditLineItems() {
+    const checkbox = document.getElementById('edit_use_line_items');
+    const simpleAmount = document.getElementById('edit_simple_amount');
+    const section = document.getElementById('edit_line_items_section');
+    const amountInput = document.getElementById('edit_amount');
+    
+    // Prevent disabling mandatory line items
+    if (!checkbox.checked) {
+        checkbox.checked = true;
+        alert('Line items are mandatory for all job orders. You cannot disable this option.');
+        return;
+    }
+    
+    // Always show line items
+    if (simpleAmount) simpleAmount.style.display = 'none';
+    if (section) section.style.display = 'block';
+    if (amountInput) amountInput.required = false;
+    
+    // Make edit line item inputs required
+    const inputs = document.querySelectorAll('#edit_line_items_container .line-item-row input[type="text"], #edit_line_items_container .line-item-row input[type="number"]:not(.line-total)');
+    inputs.forEach(input => input.required = true);
+}
+
+function addEditLineItem(prefill = {}, fixedIndex = null) {
+    const container = document.getElementById('edit_line_items_container');
+    const rowIndex = fixedIndex !== null ? fixedIndex : editLineItemCounter;
+    const newRow = document.createElement('div');
+    newRow.className = 'line-item-row';
+    newRow.setAttribute('data-row', rowIndex);
+    
+    const description = prefill.description || '';
+    const unitPrice = typeof prefill.unit_price === 'number' ? prefill.unit_price.toFixed(2) : '';
+    const quantity = typeof prefill.quantity === 'number' ? prefill.quantity : 1;
+    const total = (parseFloat(unitPrice) || 0) * (parseFloat(quantity) || 0);
+    
+    newRow.innerHTML = `
+        <div class="line-item-grid">
+            <input type="text" name="line_items[${rowIndex}][description]" placeholder="Description" class="form-control" value="${escapeHtml(description)}" required>
+            <input type="number" name="line_items[${rowIndex}][unit_price]" placeholder="Unit Price" class="form-control" step="0.01" min="0" value="${unitPrice}" onchange="calculateEditLineTotal(${rowIndex})" required>
+            <input type="number" name="line_items[${rowIndex}][quantity]" placeholder="Quantity" class="form-control" step="0.01" min="0.01" value="${quantity}" onchange="calculateEditLineTotal(${rowIndex})" required>
+            <input type="number" name="line_items[${rowIndex}][total]" placeholder="Total" class="form-control line-total" value="${total ? total.toFixed(2) : ''}" readonly>
+            <button type="button" class="btn btn-danger btn-sm" onclick="removeEditLineItem(${rowIndex})">Remove</button>
+        </div>
+    `;
+    
+    container.appendChild(newRow);
+    if (fixedIndex === null) editLineItemCounter++;
+}
+
+function removeEditLineItem(rowId) {
+    const row = document.querySelector(`#edit_line_items_container .line-item-row[data-row="${rowId}"]`);
+    if (row) {
+        row.remove();
+        calculateEditGrandTotal();
+    }
+}
+
+function calculateEditLineTotal(rowId) {
+    const row = document.querySelector(`#edit_line_items_container .line-item-row[data-row="${rowId}"]`);
+    if (!row) return;
+    const unitPrice = parseFloat(row.querySelector('input[name*="unit_price"]').value) || 0;
+    const quantity = parseFloat(row.querySelector('input[name*="quantity"]').value) || 0;
+    const total = unitPrice * quantity;
+    row.querySelector('input[name*="total"]').value = total.toFixed(2);
+    calculateEditGrandTotal();
+}
+
+function calculateEditGrandTotal() {
+    const totals = document.querySelectorAll('#edit_line_items_container .line-total');
+    let grandTotal = 0;
+    totals.forEach(input => grandTotal += parseFloat(input.value) || 0);
+    const el = document.getElementById('edit_line_items_grand_total');
+    if (el) el.textContent = '₦' + grandTotal.toFixed(2);
+}
+
+function escapeHtml(text) {
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return String(text).replace(/[&<>"']/g, m => map[m]);
+}
+
 function updatePayment(invoiceId, currentPaymentStatus) {
     document.getElementById('payment_invoice_id').value = invoiceId;
     document.getElementById('payment_status').value = currentPaymentStatus;
@@ -573,26 +816,27 @@ function hideDeleteModal() {
 let lineItemCounter = 1;
 
 function toggleLineItems() {
-    const useLineItems = document.getElementById('use_line_items').checked;
+    const useLineItemsCheckbox = document.getElementById('use_line_items');
+    const useLineItems = useLineItemsCheckbox.checked;
     const simpleAmount = document.getElementById('simple_amount');
     const lineItemsSection = document.getElementById('line_items_section');
     const amountInput = document.getElementById('amount');
     
-    if (useLineItems) {
-        simpleAmount.style.display = 'none';
-        lineItemsSection.style.display = 'block';
-        amountInput.required = false;
-        // Make first line item required
-        const firstLineInputs = document.querySelectorAll('.line-item-row[data-row="0"] input[required]');
-        firstLineInputs.forEach(input => input.required = true);
-    } else {
-        simpleAmount.style.display = 'block';
-        lineItemsSection.style.display = 'none';
-        amountInput.required = true;
-        // Remove required from line items
-        const lineItemInputs = document.querySelectorAll('.line-item-row input[required]');
-        lineItemInputs.forEach(input => input.required = false);
+    // Prevent unchecking - line items are mandatory
+    if (!useLineItems) {
+        useLineItemsCheckbox.checked = true;
+        alert('Line items are mandatory for all job orders. You cannot disable this option.');
+        return;
     }
+    
+    // Always show line items section since it's mandatory
+    simpleAmount.style.display = 'none';
+    lineItemsSection.style.display = 'block';
+    amountInput.required = false;
+    
+    // Make line item inputs required
+    const lineItemInputs = document.querySelectorAll('.line-item-row input[type="text"], .line-item-row input[type="number"]:not(.line-total)');
+    lineItemInputs.forEach(input => input.required = true);
 }
 
 function addLineItem() {

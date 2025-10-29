@@ -72,6 +72,17 @@ body {
     background-clip: text;
 }
 
+/* Make brand clickable without changing visual style */
+.nav-brand .brand-link {
+    text-decoration: none;
+    color: inherit;
+    display: inline-block;
+    cursor: pointer;
+}
+.nav-brand .brand-link:hover h2 {
+    filter: brightness(1.15);
+}
+
 .nav-menu {
     display: flex;
     list-style: none;

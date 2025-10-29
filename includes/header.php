@@ -10,7 +10,9 @@
 <body>
     <nav class="navbar">
         <div class="nav-brand">
-            <h2>💼 FinEase</h2>
+            <a href="<?php echo strpos($_SERVER['REQUEST_URI'], '/pages/') !== false ? '../index.php' : 'index.php'; ?>" class="brand-link" title="Go to Dashboard">
+                <h2>💼 FinEase</h2>
+            </a>
         </div>
         
         <div class="hamburger" onclick="toggleMenu()">

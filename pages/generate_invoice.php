@@ -176,7 +176,7 @@ require_once '../includes/header.php';
             <?php else: ?>
             <h3>Payment Received</h3>
             <p><strong>Status:</strong> <span class="paid-full">PAID IN FULL</span></p>
-            <p>Than you for your patronage!</p>
+            <p>Thank you for your patronage!</p>
             <?php endif; ?>
         </div>
     </div>

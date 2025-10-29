@@ -87,14 +87,68 @@ if ($_POST) {
             $stmt = $db->prepare("INSERT INTO company_settings (company_name, address, contact_info, country, currency, tax_enabled, tax_rate, tithe_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ");
             $stmt->execute([$companyName, $address, $contactInfo, $country, $currency, $taxEnabled, $taxRate, $titheRate]);
             
-            // Run migrations and environment checks again to finalize
+            // Run migrations and environment checks again
             $checks = $database->runMigrationsAndChecks();
-            
-            // Mark setup as complete
-            file_put_contents('../config/setup_complete.txt', date('Y-m-d H:i:s'));
-            
-            header('Location: ../auth/login.php?setup=complete');
+
+            // Proceed to admin account creation
+            header('Location: ?step=3');
             exit;
+            break;
+
+        case 3:
+            // Admin credentials setup
+            require_once '../config/database.php';
+            $database = new Database();
+            $db = $database->getConnection();
+
+            $adminUsername = $_POST['admin_username'] ?? '';
+            $adminPassword = $_POST['admin_password'] ?? '';
+            $adminPasswordConfirm = $_POST['admin_password_confirm'] ?? '';
+
+            // Validate input
+            if ($_POST) {
+                if (strlen($adminUsername) < 3) {
+                    $error = "Username must be at least 3 characters long.";
+                    break;
+                }
+                if (strlen($adminPassword) < 6) {
+                    $error = "Password must be at least 6 characters long.";
+                    break;
+                }
+                if ($adminPassword !== $adminPasswordConfirm) {
+                    $error = "Passwords do not match.";
+                    break;
+                }
+
+                // Ensure username is unique
+                $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
+                $stmt->execute([$adminUsername]);
+                $existingUser = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($existingUser) {
+                    $error = "Username already exists. Choose another.";
+                    break;
+                }
+
+                // Find any existing admin; if exists, update first admin; otherwise insert new
+                $stmt = $db->prepare("SELECT id, username FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1");
+                $stmt->execute();
+                $adminRow = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                $hashed = password_hash($adminPassword, PASSWORD_DEFAULT);
+
+                if ($adminRow) {
+                    $stmt = $db->prepare("UPDATE users SET username = ?, password = ? WHERE id = ?");
+                    $stmt->execute([$adminUsername, $hashed, $adminRow['id']]);
+                } else {
+                    $stmt = $db->prepare("INSERT INTO users (username, password, role) VALUES (?, ?, 'admin')");
+                    $stmt->execute([$adminUsername, $hashed]);
+                }
+
+                // Mark setup as complete and redirect to login
+                file_put_contents('../config/setup_complete.txt', date('Y-m-d H:i:s'));
+                header('Location: ../auth/login.php?setup=complete');
+                exit;
+            }
             break;
     }
 }
@@ -226,6 +280,28 @@ if ($_POST) {
                 </div>
                 
                 <button type="submit" class="btn btn-primary">Complete Setup</button>
+            </form>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($step == 3): ?>
+        <div class="form-container">
+            <h2>Step 3: Create Admin Account</h2>
+            <p style="color:#b8bcc8; margin-top:0.5rem;">Set your administrator credentials. You can add more users later in Settings.</p>
+            <form method="POST">
+                <div class="form-group">
+                    <label for="admin_username">Admin Username</label>
+                    <input type="text" id="admin_username" name="admin_username" class="form-control" required minlength="3">
+                </div>
+                <div class="form-group">
+                    <label for="admin_password">Password</label>
+                    <input type="password" id="admin_password" name="admin_password" class="form-control" required minlength="6">
+                </div>
+                <div class="form-group">
+                    <label for="admin_password_confirm">Confirm Password</label>
+                    <input type="password" id="admin_password_confirm" name="admin_password_confirm" class="form-control" required minlength="6">
+                </div>
+                <button type="submit" class="btn btn-primary">Save Admin & Finish</button>
             </form>
         </div>
         <?php endif; ?>
