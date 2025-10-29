@@ -63,10 +63,15 @@ A comprehensive, modern business financial management system designed for small 
 
 ### Method 1: One-Click Setup
 1. **Download** the latest release
-2. **Upload** to your cPanel public_html directory
-3. **Visit** `yourdomain.com/install.php`
-4. **Follow** the setup wizard
-5. **Run** `yourdomain.com/migrate.php` to create tables
+2. **Upload** all files to your hosting `public_html` (or web root)
+3. **Visit** `yourdomain.com/install.php` (auto-redirects to the setup wizard)
+4. **Complete** the wizard:
+   - Step 1: Database configuration (creates tables)
+   - Step 2: Company information & preferences
+   - Step 3: Admin account setup
+5. **Login** and change the admin password immediately
+
+Note: Upgrading from an older version? Run `migrate_v11b.php` after step 1 to align tables, then continue the wizard.
 
 ### Method 2: Manual Setup
 ```bash
@@ -216,14 +221,14 @@ apt-finance-manager/
 
 ## 🔮 Roadmap
 
-### Version 1.2 (Planned)
+### Version 1.3 (Planned)
 - [ ] Email notifications for invoices
 - [ ] PDF invoice generation
 - [ ] Advanced inventory management
 - [ ] Multi-company support
 - [ ] API endpoints
 
-### Version 1.3 (Future)
+### Version 1.4 (Future)
 - [ ] Mobile app companion
 - [ ] Advanced analytics dashboard
 - [ ] Integration with payment gateways

@@ -4,29 +4,30 @@
 
 ### Step 1: Upload Files
 - Extract the package to your cPanel File Manager
-- Upload all files to your `public_html` directory
+- Upload all files to your `public_html` (web root)
 - Ensure all folders and files are properly uploaded
 
-### Step 2: Database Setup
-Visit: `yourdomain.com/install.php`
+### Step 2: Start Setup Wizard
+Visit: `yourdomain.com/install.php` (auto-redirects to the setup wizard)
 - Enter your database credentials
-- Follow the installation wizard
+- The wizard will create required tables automatically
 - Default login will be created: `admin` / `admin123`
 
-### Step 3: Run Migration
-Visit: `yourdomain.com/migrate.php`
+### Step 3: Tables & Migration
+- Fresh install: No separate migration step needed — tables are created in Step 2
+- Upgrading from older versions: Visit `yourdomain.com/migrate_v11b.php` to align schema
 
-This will create:
-- ✅ All new tables (clients, bank_accounts, inventory, vat_records)
+Tables and schema created include:
+- ✅ New tables (clients, bank_accounts, inventory, vat_records)
 - ✅ New columns for existing tables
 - ✅ Default bank accounts (Opay, Kuda, MoniePoint, etc.)
 - ✅ Updated invoice status enums
 
 ### Step 4: Complete Setup
-Visit: `yourdomain.com/setup/index.php`
-- Configure company information
+- Continue the wizard to configure company information
 - Set currency and tax preferences
 - Configure tithe rate (default 10%)
+- Create the admin account and finish
 
 ## 🎯 What's New in v1.1a
 
@@ -101,7 +102,8 @@ Pre-configured Nigerian banks:
 
 **"Table doesn't exist" errors:**
 ```bash
-1. Run migrate.php to create missing tables
+1. Run the setup wizard (Step 2) to create missing tables
+   - For upgrades, run migrate_v11b.php to align schema
 2. Check database user has CREATE/ALTER permissions
 3. Verify database connection in config/config.php
 ```
