@@ -72,6 +72,9 @@ require_once '../includes/header.php';
             <?php if ($companySettings['contact_info']): ?>
             <p><?php echo nl2br($companySettings['contact_info']); ?></p>
             <?php endif; ?>
+            <?php if (!empty($companySettings['invoice_bank_name']) || !empty($companySettings['invoice_bank_account_number'])): ?>
+            <p><strong>Bank:</strong> <?php echo htmlspecialchars($companySettings['invoice_bank_name'] ?? ''); ?><?php if (!empty($companySettings['invoice_bank_account_number'])): ?>, <strong>Account No.:</strong> <?php echo htmlspecialchars($companySettings['invoice_bank_account_number']); ?><?php endif; ?></p>
+            <?php endif; ?>
         </div>
         
         <div class="invoice-info">
@@ -173,6 +176,13 @@ require_once '../includes/header.php';
             <?php if ($documentType === 'invoice'): ?>
             <h3>Payment Terms</h3>
             <p>We look forward to you confirmed Order</p>
+            <?php if (!empty($companySettings['invoice_bank_name']) || !empty($companySettings['invoice_bank_account_number'])): ?>
+            <div class="payment-details">
+                <h4>Payment Details</h4>
+                <?php if (!empty($companySettings['invoice_bank_name'])): ?><p><strong>Bank:</strong> <?php echo htmlspecialchars($companySettings['invoice_bank_name']); ?></p><?php endif; ?>
+                <?php if (!empty($companySettings['invoice_bank_account_number'])): ?><p><strong>Account No.:</strong> <?php echo htmlspecialchars($companySettings['invoice_bank_account_number']); ?></p><?php endif; ?>
+            </div>
+            <?php endif; ?>
             <?php else: ?>
             <h3>Payment Received</h3>
             <p><strong>Status:</strong> <span class="paid-full">PAID IN FULL</span></p>
@@ -358,6 +368,17 @@ require_once '../includes/header.php';
 .invoice-notes h3 {
     color: #333;
     margin-bottom: 1rem;
+}
+
+.payment-details h4 {
+    margin-top: 0.75rem;
+    margin-bottom: 0.25rem;
+    color: #333;
+}
+
+.payment-details p {
+    margin: 0.15rem 0;
+    color: #666;
 }
 
 .payment-terms {

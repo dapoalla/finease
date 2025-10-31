@@ -76,10 +76,16 @@ function getCompanySettings() {
             'tithe_rate' => 10.00,
             'country' => 'Nigeria',
             'address' => '',
-            'contact_info' => ''
+            'contact_info' => '',
+            'invoice_bank_name' => '',
+            'invoice_bank_account_number' => ''
         ];
     }
     
+    // Ensure keys exist for new settings fields
+    $settings['invoice_bank_name'] = $settings['invoice_bank_name'] ?? '';
+    $settings['invoice_bank_account_number'] = $settings['invoice_bank_account_number'] ?? '';
+
     return $settings;
 }
 

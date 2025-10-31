@@ -34,6 +34,8 @@ if ($_POST) {
         $taxEnabled = isset($_POST['tax_enabled']) ? 1 : 0;
         $taxRate = floatval($_POST['tax_rate']);
         $titheRate = floatval($_POST['tithe_rate']);
+        $invoiceBankName = sanitizeInput($_POST['invoice_bank_name'] ?? '');
+        $invoiceBankAccountNumber = sanitizeInput($_POST['invoice_bank_account_number'] ?? '');
         
         $db = getDB();
         // Get the latest settings ID first
@@ -42,12 +44,12 @@ if ($_POST) {
         $settingsId = $idStmt->fetchColumn();
         
         if ($settingsId) {
-            $stmt = $db->prepare("UPDATE company_settings SET company_name = ?, address = ?, contact_info = ?, country = ?, currency = ?, tax_enabled = ?, tax_rate = ?, tithe_rate = ? WHERE id = ?");
-            $success = $stmt->execute([$companyName, $address, $contactInfo, $country, $currency, $taxEnabled, $taxRate, $titheRate, $settingsId]);
+            $stmt = $db->prepare("UPDATE company_settings SET company_name = ?, address = ?, contact_info = ?, country = ?, currency = ?, tax_enabled = ?, tax_rate = ?, tithe_rate = ?, invoice_bank_name = ?, invoice_bank_account_number = ? WHERE id = ?");
+            $success = $stmt->execute([$companyName, $address, $contactInfo, $country, $currency, $taxEnabled, $taxRate, $titheRate, $invoiceBankName, $invoiceBankAccountNumber, $settingsId]);
         } else {
             // Insert new settings if none exist
-            $stmt = $db->prepare("INSERT INTO company_settings (company_name, address, contact_info, country, currency, tax_enabled, tax_rate, tithe_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-            $success = $stmt->execute([$companyName, $address, $contactInfo, $country, $currency, $taxEnabled, $taxRate, $titheRate]);
+            $stmt = $db->prepare("INSERT INTO company_settings (company_name, address, contact_info, country, currency, tax_enabled, tax_rate, tithe_rate, invoice_bank_name, invoice_bank_account_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $success = $stmt->execute([$companyName, $address, $contactInfo, $country, $currency, $taxEnabled, $taxRate, $titheRate, $invoiceBankName, $invoiceBankAccountNumber]);
         }
         
         if ($success) {
@@ -234,6 +236,17 @@ include '../includes/header.php';
             <div class="form-group">
                 <label for="contact_info">Contact Information</label>
                 <textarea id="contact_info" name="contact_info" class="form-control" rows="2"><?php echo $settings['contact_info']; ?></textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="invoice_bank_name">Bank (for invoices)</label>
+                    <input type="text" id="invoice_bank_name" name="invoice_bank_name" class="form-control" value="<?php echo htmlspecialchars($settings['invoice_bank_name'] ?? ''); ?>" placeholder="e.g., GTBank, Access Bank">
+                </div>
+                <div class="form-group">
+                    <label for="invoice_bank_account_number">Account Number</label>
+                    <input type="text" id="invoice_bank_account_number" name="invoice_bank_account_number" class="form-control" value="<?php echo htmlspecialchars($settings['invoice_bank_account_number'] ?? ''); ?>" placeholder="e.g., 0123456789">
+                </div>
             </div>
             
             <div class="form-row">
