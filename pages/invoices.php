@@ -21,6 +21,7 @@ if ($_POST && checkUserPermission('accountant')) {
         $date = $_POST['date'] ?? date('Y-m-d');
         $notes = sanitizeInput($_POST['notes'] ?? '');
         $useLineItems = isset($_POST['use_line_items']);
+        $applyVat = isset($_POST['apply_vat']);
 
         if (!$invoiceDbId) {
             $error = "Invalid job order ID.";
@@ -41,18 +42,23 @@ if ($_POST && checkUserPermission('accountant')) {
                         }
                     }
                     
-                    // Calculate VAT
+                    // Calculate VAT (only if requested for this job order)
                     $stmt = $db->prepare("SELECT tax_rate FROM company_settings LIMIT 1");
                     $stmt->execute();
                     $settings = $stmt->fetch(PDO::FETCH_ASSOC);
                     $taxRate = floatval($settings['tax_rate'] ?? 7.5);
-                    $vatAmount = $amount * ($taxRate / 100);
-                    $totalWithVat = $amount + $vatAmount;
+                    if ($applyVat) {
+                        $vatAmount = $amount * ($taxRate / 100);
+                        $totalWithVat = $amount + $vatAmount;
+                    } else {
+                        $vatAmount = 0;
+                        $totalWithVat = $amount;
+                    }
                 }
                 
                 // Update job order
-                $stmt = $db->prepare("UPDATE invoices SET client_name = ?, service_description = ?, amount = ?, vat_amount = ?, total_with_vat = ?, has_line_items = ?, line_items_total = ?, date = ?, notes = ? WHERE id = ?");
-                if (!$stmt->execute([$clientName, $serviceDescription, $amount, $vatAmount, $totalWithVat, $useLineItems ? 1 : 0, $useLineItems ? $amount : 0, $date, $notes, $invoiceDbId])) {
+                $stmt = $db->prepare("UPDATE invoices SET client_name = ?, service_description = ?, amount = ?, vat_amount = ?, total_with_vat = ?, has_line_items = ?, apply_vat = ?, line_items_total = ?, date = ?, notes = ? WHERE id = ?");
+                if (!$stmt->execute([$clientName, $serviceDescription, $amount, $vatAmount, $totalWithVat, $useLineItems ? 1 : 0, $applyVat ? 1 : 0, $useLineItems ? $amount : 0, $date, $notes, $invoiceDbId])) {
                     throw new Exception("Failed to update job order");
                 }
                 
@@ -94,6 +100,7 @@ if ($_POST && checkUserPermission('accountant')) {
         $date = $_POST['date'];
         $notes = sanitizeInput($_POST['notes']);
         $useLineItems = isset($_POST['use_line_items']);
+        $applyVat = isset($_POST['apply_vat']);
         
         $db = getDB();
         
@@ -115,10 +122,10 @@ if ($_POST && checkUserPermission('accountant')) {
                 $amount = floatval($_POST['amount']);
             }
             
-            // Calculate VAT if applicable
+            // Calculate VAT only if requested for this job order
             $vatAmount = 0;
             $totalWithVat = $amount;
-            if (shouldApplyVAT()) {
+            if ($applyVat) {
                 $vatAmount = calculateVAT($amount);
                 $totalWithVat = $amount + $vatAmount;
             }
@@ -126,9 +133,9 @@ if ($_POST && checkUserPermission('accountant')) {
             $invoiceId = generateInvoiceId($clientName, $date);
             
             // Create job order
-            $stmt = $db->prepare("INSERT INTO invoices (invoice_id, client_id, client_name, service_description, amount, vat_amount, total_with_vat, has_line_items, line_items_total, date, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt = $db->prepare("INSERT INTO invoices (invoice_id, client_id, client_name, service_description, amount, vat_amount, total_with_vat, has_line_items, apply_vat, line_items_total, date, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             
-            if (!$stmt->execute([$invoiceId, $clientId ?: null, $clientName, $serviceDescription, $amount, $vatAmount, $totalWithVat, $useLineItems ? 1 : 0, $useLineItems ? $amount : 0, $date, $notes])) {
+            if (!$stmt->execute([$invoiceId, $clientId ?: null, $clientName, $serviceDescription, $amount, $vatAmount, $totalWithVat, $useLineItems ? 1 : 0, $applyVat ? 1 : 0, $useLineItems ? $amount : 0, $date, $notes])) {
                 throw new Exception("Failed to create job order");
             }
             
@@ -297,9 +304,16 @@ require_once '../includes/header.php';
                 </div>
             </div>
             <button type="button" class="btn btn-secondary btn-sm" onclick="addLineItem()">+ Add Line Item</button>
-            <div class="line-items-summary">
-                <strong>Total: <span id="line_items_grand_total">₦0.00</span></strong>
-            </div>
+        <div class="line-items-summary">
+            <strong>Total: <span id="line_items_grand_total">₦0.00</span></strong>
+        </div>
+        </div>
+        
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="apply_vat" name="apply_vat" checked>
+                Apply VAT for this job order
+            </label>
         </div>
         
         <div class="form-group">
@@ -492,6 +506,13 @@ require_once '../includes/header.php';
             </div>
             
             <div class="form-group">
+                <label>
+                    <input type="checkbox" id="edit_apply_vat" name="apply_vat">
+                    Apply VAT for this job order
+                </label>
+            </div>
+            
+            <div class="form-group">
                 <label for="edit_date">Date</label>
                 <input type="date" id="edit_date" name="date" class="form-control" required>
             </div>
@@ -626,6 +647,12 @@ function editJobOrder(invoiceId) {
                 document.getElementById('edit_service_description').value = inv.service_description || '';
                 document.getElementById('edit_date').value = inv.date ? inv.date.substring(0,10) : '';
                 document.getElementById('edit_notes').value = inv.notes || '';
+                
+                // Populate VAT toggle
+                const editApplyVat = document.getElementById('edit_apply_vat');
+                if (editApplyVat) {
+                    editApplyVat.checked = (typeof inv.apply_vat !== 'undefined') ? !!inv.apply_vat : (parseFloat(inv.vat_amount) > 0);
+                }
                 
                 // Enforce line items usage in edit modal
                 const editUseLineItems = document.getElementById('edit_use_line_items');

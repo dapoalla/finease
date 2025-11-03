@@ -127,6 +127,7 @@ class Database {
                 vat_amount DECIMAL(15,2) DEFAULT 0,
                 total_with_vat DECIMAL(15,2) DEFAULT 0,
                 has_line_items BOOLEAN DEFAULT FALSE,
+                apply_vat BOOLEAN DEFAULT TRUE,
                 line_items_total DECIMAL(15,2) DEFAULT 0,
                 date DATE NOT NULL,
                 notes TEXT,
@@ -276,6 +277,7 @@ class Database {
         $requiredColumns = [
             'invoices.has_line_items' => "ALTER TABLE invoices ADD COLUMN has_line_items BOOLEAN DEFAULT FALSE",
             'invoices.line_items_total' => "ALTER TABLE invoices ADD COLUMN line_items_total DECIMAL(15,2) DEFAULT 0",
+            'invoices.apply_vat' => "ALTER TABLE invoices ADD COLUMN apply_vat BOOLEAN DEFAULT TRUE",
             'transactions.receipt_file' => "ALTER TABLE transactions ADD COLUMN receipt_file VARCHAR(255) NULL",
             'transactions.seller_details' => "ALTER TABLE transactions ADD COLUMN seller_details VARCHAR(255) NULL",
             'transactions.receipt_number' => "ALTER TABLE transactions ADD COLUMN receipt_number VARCHAR(100) NULL",

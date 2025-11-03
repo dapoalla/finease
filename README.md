@@ -1,4 +1,4 @@
-# 💼 FinEase v1.2
+# 💼 FinEase v1.1c
 
 A comprehensive, modern business financial management system designed for small and medium businesses. Built with PHP and featuring a sleek dark theme interface, comprehensive client management, and advanced financial tracking capabilities.
 
